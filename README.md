@@ -73,9 +73,87 @@ payments: gestión y confirmación de pagos.
 
 ## Tabla de endpoints
 
-| Column 1 | Column 2 | Column 3 |
-|----------|----------|----------|
-| Row 1    | Cell 2   | Cell 3   |
-| Row 2    | Cell 5   | Cell 6   |
-| Row 3    | Cell 8   | Cell 9   |
+| Método | Endpoint                         | Descripción                                      | Parámetros                                 | Autenticación           |
+|--------|----------------------------------|--------------------------------------------------|---------------------------------------------|--------------------------|
+| POST   | /v1/auth/register                | Registro de usuario                              | body: {name, email, password, role}         | No                       |
+| POST   | /v1/auth/login                   | Login de usuario                                 | body: {email, password}                     | No                       |
+| GET    | /v1/users/me                     | Obtener datos del usuario autenticado            | headers: token                              | Sí                       |
+| PUT    | /v1/users/me                     | Actualizar perfil del usuario                    | body: {name, phone}                         | Sí                       |
+| DELETE | /v1/users/me                     | Eliminar cuenta                                  | headers: token                              | Sí                       |
+| GET    | /v1/vehicles                     | Listar vehículos del conductor                   | headers: token                              | Rol: Conductor           |
+| POST   | /v1/vehicles                     | Registrar vehículo                               | body: {marca, modelo, placa}                | Rol: Conductor           |
+| DELETE | /v1/vehicles/:id                 | Eliminar vehículo                                | path: id                                    | Rol: Conductor           |
+| POST   | /v1/rides                        | Solicitar viaje                                  | body: {origen, destino}                     | Rol: Pasajero            |
+| GET    | /v1/rides                        | Ver mis viajes                                   | query: status                               | Sí                       |
+| GET    | /v1/rides/nearby                 | Buscar viajes cercanos (para conductor)          | query: location                             | Rol: Conductor           |
+| PATCH  | /v1/rides/:id/accept             | Aceptar viaje                                    | path: id                                    | Rol: Conductor           |
+| PATCH  | /v1/rides/:id/cancel             | Cancelar viaje                                   | path: id                                    | Sí                       |
+| PATCH  | /v1/rides/:id/start              | Marcar inicio del viaje                          | path: id                                    | Rol: Conductor           |
+| PATCH  | /v1/rides/:id/finish             | Finalizar viaje                                  | path: id                                    | Rol: Conductor           |
+| POST   | /v1/payments                     | Procesar pago                                    | body: {ride_id, método}                     | Rol: Pasajero            |
+| GET    | /v1/payments/history             | Ver historial de pagos                           | query: fecha                                | Sí                       |
+| POST   | /v1/ratings                      | Calificar viaje                                  | body: {ride_id, score, comentario}          | Sí                       |
+| GET    | /v1/admin/users                  | Listar usuarios                                  | query: rol                                  | Rol: Admin               |
+| PATCH  | /v1/admin/users/:id/block        | Bloquear usuario                                 | path: id                                    | Rol: Admin               |
 
+## Flujos de uso
+
+### Registro y eliminación de un vehículo (Conductor)
+Objetivo: Un conductor registra su vehículo para comenzar a recibir viajes, y luego decide eliminarlo.
+
+- El conductor inicia sesión mediante POST /v1/auth/login.
+- Usa POST /v1/vehicles enviando los datos del vehículo (marca, modelo, placa).
+- La API valida y registra el vehículo en su cuenta.
+- El conductor verifica sus vehículos registrados con GET /v1/vehicles.
+- Decide eliminar un vehículo con DELETE /v1/vehicles/:id.
+- La API confirma y elimina el registro del vehículo.
+
+###  Pago fallido y manejo de error
+Objetivo: Un pasajero intenta pagar, pero el método de pago falla. La API responde apropiadamente.
+
+- Tras finalizar un viaje, el pasajero intenta pagar con POST /v1/payments.
+- Envía ride_id y método de pago (por ejemplo, tarjeta vencida).
+- La API detecta un fallo en la transacción y responde con 402 Payment Required.
+- El usuario es notificado en la app y puede intentar otro método de pago.
+- El sistema guarda el intento fallido en el historial de pagos.
+
+### Bloqueo de un usuario por comportamiento inapropiado
+Objetivo: El administrador detecta comportamiento inapropiado y bloquea una cuenta.
+
+- El administrador accede al panel mediante POST /v1/auth/login.
+- Usa GET /v1/admin/users para buscar usuarios con comportamiento reportado.
+- Identifica a un conductor con múltiples calificaciones negativas.
+- Ejecuta PATCH /v1/admin/users/:id/block para bloquearlo.
+- El sistema marca al usuario como bloqueado y revoca su token.
+- Si el usuario intenta acceder, la API responde con 403 Forbidden.
+
+## Decisiones de diseño y justificación
+- Versionado (/v1): permite escalar sin romper integraciones.
+- Roles separados: evita mezclar permisos y mejora la seguridad.
+- Seguridad: tokens, HTTPS obligatorio, acceso mínimo necesario.
+- Privacidad: ubicación solo visible durante el viaje.
+- Errores explícitos: facilita el desarrollo del cliente.
+- Modularidad RESTful: facilita mantenimiento y comprensión.
+
+## Manejo de errores
+Formato general:
+``` json
+{
+  "error": "Descripción del error",
+  "code": "ERR_CODE"
+}
+```
+Código HTTP	Error	Situación
+- 400	INVALID_DATA	Datos mal enviados en el body
+- 401	UNAUTHORIZED	Token inválido o ausente
+- 403	FORBIDDEN	Acción no permitida según rol
+- 404	NOT_FOUND	Recurso no encontrado (ej. viaje inexistente)
+- 503	NO_DRIVERS_AVAILABLE	No hay conductores cercanos
+
+
+## Propuestas de mejora 
+Notificaciones push en tiempo real.
+Opción de pago en efectivo.
+Soporte para rutas compartidas.
+Integración con mapas para actualizacion en tiempo real.
+Reportes automáticos de actividad para el administrador.
